@@ -20,24 +20,47 @@ default_settings = {
 
 # Load settings from file or use default settings
 if os.path.exists(config_file):
-    with open(config_file, "r") as f:
-        settings = json.load(f)
+    try:
+        with open(config_file, "r") as f:
+            settings = json.load(f)
+    except json.JSONDecodeError:
+        print("Error decoding JSON from settings file. Using default settings.")
+        settings = default_settings
 else:
     settings = default_settings
     with open(config_file, "w") as f:
         json.dump(settings, f, indent=4)
 
 def chat_with_model(prompt, context, model_name, max_tokens, temperature):
-    # Use the ollama library to generate a response from the model
-    response = ollama.generate(
-        model=model_name,
-        context=context,
-        prompt=prompt,
-        options={ "temperature": temperature, "max_tokens": max_tokens }
-    )
-    return response
+    """
+    Generate a response from the model using the ollama library.
+    
+    Args:
+        prompt (str): The input prompt for the model.
+        context (str): The context to maintain conversation state.
+        model_name (str): The name of the model to use.
+        max_tokens (int): The maximum number of tokens in the response.
+        temperature (float): The sampling temperature for response generation.
+    
+    Returns:
+        dict: The response from the model.
+    """
+    try:
+        response = ollama.generate(
+            model=model_name,
+            context=context,
+            prompt=prompt,
+            options={"temperature": temperature, "max_tokens": max_tokens}
+        )
+        return response
+    except Exception as e:
+        print(f"Error generating response: {e}")
+        return {"response": "", "context": context}
 
 def init():
+    """
+    Initialize the command-line interface, parse arguments, and update settings.
+    """
     parser = argparse.ArgumentParser(description="Chat with a local AI model.")
     parser.add_argument("--model_name", type=str, help="Name of the model.")
     parser.add_argument("--max_tokens", type=int, help="Maximum number of tokens in the response.")
@@ -60,21 +83,29 @@ def init():
             print("Available models:")
             for i, model in enumerate(running_models['models'], 1):
                 print(f"{i}. {model['name']}")
-            model_index = int(input("Please select the model number: ")) - 1
-            settings["model_name"] = running_models['models'][model_index]['name']
+            try:
+                model_index = int(input("Please select the model number: ")) - 1
+                settings["model_name"] = running_models['models'][model_index]['name']
+            except (ValueError, IndexError):
+                print("Invalid selection. Please enter a valid model number.")
+                settings["model_name"] = input("Please enter the model name: ")
         else:
             print("No running models found.")
             settings["model_name"] = input("Please enter the model name: ")
 
 if __name__ == "__main__":
     init()
-    context=""
+    context = ""
     try:
         while True:
             prompt = input("You: ")
             response = chat_with_model(prompt, context, settings["model_name"], settings["max_tokens"], settings["temperature"])
-            if response["context"]:
+            if "context" in response and response["context"]:
                 context = response["context"]
-            print(f"{settings['model_name']}: {response['response']}")
+            if "response" in response:
+                print(f"{settings['model_name']}: {response['response']}")
+            else:
+                print(f"{settings['model_name']}: No response received.")
+
     except KeyboardInterrupt:
         print("\nExiting chat.")
