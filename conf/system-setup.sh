@@ -27,6 +27,10 @@ for model in ${OLLAMA_MODELS//,/ }
 do
     podman exec ollama ollama run $model
 done
+for embedding in ${OLLAMA_EMBEDDINGS//,/ }
+do
+    podman exec ollama ollama pull $embedding
+done
 
 # Start an OpenwebUI instance free of auth
-docker run -d -p 3000:8080 -e WEBUI_AUTH=False -v open-webui:/app/backend/data --name open-webui ghcr.io/open-webui/open-webui:main
+podman run -d -p 3000:8080 -e WEBUI_AUTH=False -v open-webui:/app/backend/data --name open-webui ghcr.io/open-webui/open-webui:main
