@@ -2,6 +2,7 @@ import os
 import json
 import argparse
 import ollama
+from ollama import Client
 
 # Define the path for the settings file
 home_dir = os.path.expanduser("~")
@@ -13,9 +14,9 @@ os.makedirs(config_dir, exist_ok=True)
 
 # Default settings
 default_settings = {
-    "model_name": "",
-    "max_tokens": 4096,
-    "temperature": 0.5
+    "ollama.model": "",
+    "ollama.temperature": 0.5,
+    "ollama.url": "http://localhost:11434"
 }
 
 # Load settings from file or use default settings
@@ -28,10 +29,9 @@ if os.path.exists(config_file):
         settings = default_settings
 else:
     settings = default_settings
-    with open(config_file, "w") as f:
-        json.dump(settings, f, indent=4)
 
-def chat_with_model(prompt, context, model_name, max_tokens, temperature):
+
+def chat_with_model(prompt, context, model_name, temperature, url):
     """
     Generate a response from the model using the ollama library.
     
@@ -39,18 +39,19 @@ def chat_with_model(prompt, context, model_name, max_tokens, temperature):
         prompt (str): The input prompt for the model.
         context (str): The context to maintain conversation state.
         model_name (str): The name of the model to use.
-        max_tokens (int): The maximum number of tokens in the response.
         temperature (float): The sampling temperature for response generation.
+        url (str): The URL of the Ollama server.
     
     Returns:
         dict: The response from the model.
     """
     try:
-        response = ollama.generate(
+        client = Client(host=url)
+        response = client.generate(
             model=model_name,
             context=context,
             prompt=prompt,
-            options={"temperature": temperature, "max_tokens": max_tokens}
+            options={"temperature": temperature}
         )
         return response
     except Exception as e:
@@ -62,22 +63,22 @@ def init():
     Initialize the command-line interface, parse arguments, and update settings.
     """
     parser = argparse.ArgumentParser(description="Chat with a local AI model.")
-    parser.add_argument("--model_name", type=str, help="Name of the model.")
-    parser.add_argument("--max_tokens", type=int, help="Maximum number of tokens in the response.")
+    parser.add_argument("--model", type=str, help="Name of the model.")
     parser.add_argument("--temperature", type=float, help="Sampling temperature.")
+    parser.add_argument("--url", type=str, help="URL of the Ollama server.")
 
     args = parser.parse_args()
 
     # Update settings if provided
-    if args.model_name:
-        settings["model_name"] = args.model_name
-    if args.max_tokens:
-        settings["max_tokens"] = args.max_tokens
+    if args.model:
+        settings["ollama.model"] = args.model
     if args.temperature:
-        settings["temperature"] = args.temperature
+        settings["ollama.temperature"] = args.temperature
+    if args.url:
+        settings["ollama.url"] = args.url
 
     # Check if model_name is empty or not present
-    if not settings.get("model_name"):
+    if not settings.get("ollama.model"):
         running_models = ollama.list()
         if running_models:
             print("Available models:")
@@ -85,13 +86,13 @@ def init():
                 print(f"{i}. {model['name']}")
             try:
                 model_index = int(input("Please select the model number: ")) - 1
-                settings["model_name"] = running_models['models'][model_index]['name']
+                settings["ollama.model"] = running_models['models'][model_index]['name']
             except (ValueError, IndexError):
                 print("Invalid selection. Please enter a valid model number.")
-                settings["model_name"] = input("Please enter the model name: ")
+                settings["ollama.model"] = input("Please enter the model name: ")
         else:
             print("No running models found.")
-            settings["model_name"] = input("Please enter the model name: ")
+            settings["ollama.model"] = input("Please enter the model name: ")
 
 if __name__ == "__main__":
     init()
@@ -99,13 +100,13 @@ if __name__ == "__main__":
     try:
         while True:
             prompt = input("You: ")
-            response = chat_with_model(prompt, context, settings["model_name"], settings["max_tokens"], settings["temperature"])
+            response = chat_with_model(prompt, context, settings["ollama.model"], settings["ollama.temperature"], settings["ollama.url"])
             if "context" in response and response["context"]:
                 context = response["context"]
             if "response" in response:
-                print(f"{settings['model_name']}: {response['response']}")
+                print(f"{settings['ollama.model']}: {response['response']}")
             else:
-                print(f"{settings['model_name']}: No response received.")
+                print(f"{settings['ollama.model']}: No response received.")
 
     except KeyboardInterrupt:
         print("\nExiting chat.")
