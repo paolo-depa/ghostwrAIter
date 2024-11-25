@@ -46,7 +46,7 @@ def parse_and_validate_args():
 
     # Check for ollama_url argument or read from config file
     if not args.ollama_url or not args.ollama_embedding:
-        config_path = os.path.expanduser("~/.config/ghostwraiter.json")
+        config_path = os.path.expanduser("~/.config/ghostwraiter/settings.json")
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r') as config_file:
