@@ -1,7 +1,14 @@
 #!/bin/bash
 
 # Source the environment variables
-source /home/ppasquale/git/ghostwrAIter/conf/cli-setup.env
+if [[ -f "$(dirname "$0")/cli-setup.env" ]]; then
+    source ~/.config/ghostwraiter/cli-setup.env
+elif [[ -f ~/.config/ghostwraiter/cli-setup.env ]]; then
+    source "$(dirname "$0")/cli-setup.env"
+else
+    echo "cli-setup.env file not found."
+    exit 1
+fi
 
 # Install the libraries listed in PIP_LIBS
 pip install $PIP_LIBS

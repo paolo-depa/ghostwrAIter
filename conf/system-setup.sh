@@ -1,5 +1,12 @@
 #!/bin/bash
-source ./system-setup.env
+if [[ -f "$(dirname "$0")/system-setup.env" ]]; then
+    source ~/.config/ghostwraiter/system-setup.env
+elif [[ -f ~/.config/ghostwraiter/system-setup.env ]]; then
+    source "$(dirname "$0")/system-setup.env"
+else
+    echo "system-setup.env file not found."
+    exit 1
+fi
 
 if ! sudo SUSEConnect -l | grep -q "Containers Module 15 SP5 x86_64 (Activated)"; then
     sudo SUSEConnect --product sle-module-containers/15.5/x86_64

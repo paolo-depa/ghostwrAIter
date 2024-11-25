@@ -6,8 +6,8 @@ from ollama import Client
 
 # Define the path for the settings file
 home_dir = os.path.expanduser("~")
-config_dir = os.path.join(home_dir, ".config")
-config_file = os.path.join(config_dir, "ghostwraiter.json")
+config_dir = os.path.join(home_dir, ".config/ghostwraiter")
+config_file = os.path.join(config_dir, "settings.json")
 
 # Ensure the config directory exists
 os.makedirs(config_dir, exist_ok=True)
