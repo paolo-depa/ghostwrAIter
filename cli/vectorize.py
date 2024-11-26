@@ -21,6 +21,9 @@ def parse_and_validate_args():
     parser.add_argument("--vector_dir", type=str, help="Path to the file where the chromadb will be saved.")
     parser.add_argument("--ollama_url", type=str, help="URL for the Ollama service.")
     parser.add_argument("--ollama_embedding", type=str, help="Embedding model for the Ollama service.")
+    # not working with the current version of langchain-community
+    # parser.add_argument("-r", "--recursive", action="store_true", help="Scan the directory recursively.")
+    parser.add_argument("--exclude", action="append", help="Paths to exclude, enquoted in single quotes.")
     args = parser.parse_args()
 
     if not args.directory:
@@ -50,6 +53,11 @@ def parse_and_validate_args():
                 print(f"Error reading configuration file {config_path}.")
                 return None
 
+    # Add vector store base path to exclude paths
+    if args.exclude is None:
+        args.exclude = []
+    args.exclude.append(args.vector_dir)
+
     return args
 
 def main():
@@ -65,17 +73,41 @@ def main():
         embedding_function = OllamaEmbeddings(base_url=args.ollama_url, model=args.ollama_embedding)
     
     try:
-        loader = DirectoryLoader(path=args.directory, exclude=args.vector_dir, silent_errors=True, recursive=True,use_multithreading=True,loader_cls=TextLoader)
+        loader = DirectoryLoader(
+            path=args.directory,
+            exclude=args.exclude,
+            silent_errors=True,
+            # recursive=args.recursive,
+            use_multithreading=True,
+            loader_cls=TextLoader
+        )
+        scan_start = time.time()
+        print(f"Starting {full_path} scan at: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(scan_start))}")
         splitted = loader.load_and_split()
-        print(f"Loaded {len(splitted)} documents from {full_path}")
+        scan_end = time.time()
+        print(f"Loaded {int(len(splitted))} documents from {full_path} in {int(scan_end - scan_start)} seconds.")
+
     except Exception as e:
         print(f"Error adding documents to vector store: {e}")
         return
 
     try:
-         vector_store = Chroma(collection_name=collection_name, persist_directory=args.vector_dir,embedding_function=embedding_function)
-         ids=vector_store.add_documents(splitted)
-         print(f"Added {len(ids)} documents to vector store in {full_path}")
+         vector_store = Chroma(
+             collection_name=collection_name,
+             persist_directory=args.vector_dir,
+             embedding_function=embedding_function
+         )
+
+         batch_size = 500
+         total_docs = len(splitted)
+         vector_start=time.time()
+         print(f"Starting vector creation at: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(vector_start))}")
+         for i in range(0, total_docs, batch_size):
+             batch = splitted[i:i + batch_size]
+             ids = vector_store.add_documents(batch)
+             vector_current = time.time()
+             print(f"Added {(i + batch_size) } / {total_docs} documents to vector store in {int(vector_current - vector_start)}.")
+
     except Exception as e:
         print(f"Error adding documents to vector store: {e}")
         return
