@@ -14,6 +14,7 @@ from langchain_community.document_loaders import DirectoryLoader, TextLoader
 
 import chromadb
 from chromadb.utils import embedding_functions
+import hashlib
 
 def parse_and_validate_args():
     parser = argparse.ArgumentParser(description="Vectorize text files in a directory using an embedding model.")
@@ -60,6 +61,47 @@ def parse_and_validate_args():
 
     return args
 
+def calculate_file_hash(filepath):
+    hasher = hashlib.sha256()
+    with open(filepath, 'rb') as f:
+        buf = f.read()
+        hasher.update(buf)
+    return hasher.hexdigest()
+
+def update_exclude_and_content(args):
+    content_file_path = os.path.join(args.vector_dir, ".content")
+    content_data = {}
+
+    # Load existing content data if available
+    if os.path.exists(content_file_path):
+        try:
+            with open(content_file_path, 'r') as content_file:
+                content_data = json.load(content_file)
+        except (IOError, json.JSONDecodeError):
+            print(f"Error reading content file {content_file_path}.")
+            return
+
+    # Scan directory and calculate hashes
+    for root, _, files in os.walk(args.directory):
+        for file in files:
+            file_path = os.path.join(root, file)
+            if file_path in args.exclude:
+                continue
+            file_hash = calculate_file_hash(file_path)
+            if content_data.get(file_path) == file_hash:
+                args.exclude.append(file_path)
+                print(f"-- {file_path} already in the vector store.")
+            else:
+                content_data[file_path] = file_hash
+
+    # Save updated content data
+    try:
+        os.makedirs(args.vector_dir, exist_ok=True)
+        with open(content_file_path, 'w') as content_file:
+            json.dump(content_data, content_file)
+    except IOError:
+        print(f"Error writing to content file {content_file_path}.")
+
 def main():
     args = parse_and_validate_args()
     if not args:
@@ -72,6 +114,8 @@ def main():
     if (args.ollama_url and args.ollama_embedding):
         embedding_function = OllamaEmbeddings(base_url=args.ollama_url, model=args.ollama_embedding)
     
+    update_exclude_and_content(args)
+
     try:
         loader = DirectoryLoader(
             path=args.directory,
@@ -85,7 +129,7 @@ def main():
         print(f"Starting {full_path} scan at: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(scan_start))}")
         splitted = loader.load_and_split()
         scan_end = time.time()
-        print(f"Loaded {int(len(splitted))} documents from {full_path} in {int(scan_end - scan_start)} seconds.")
+        print(f"Loaded {int(len(splitted))} chunks from {full_path} in {int(scan_end - scan_start)} seconds.")
 
     except Exception as e:
         print(f"Error adding documents to vector store: {e}")
@@ -106,7 +150,7 @@ def main():
              batch = splitted[i:i + batch_size]
              ids = vector_store.add_documents(batch)
              vector_current = time.time()
-             print(f"Added {(i + batch_size) } / {total_docs} documents to vector store in {int(vector_current - vector_start)}.")
+             print(f"Added {(i + len(ids)) } / {total_docs} chunks to vector store in {int(vector_current - vector_start)}.")
 
     except Exception as e:
         print(f"Error adding documents to vector store: {e}")
