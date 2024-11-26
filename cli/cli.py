@@ -1,8 +1,17 @@
 import os
 import json
 import argparse
-import ollama
-from ollama import Client
+
+import langchain_chroma
+from langchain_chroma import Chroma
+import langchain_ollama
+from langchain_ollama import OllamaLLM
+from langchain.callbacks.manager import CallbackManager
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.prompts import PromptTemplate
+from langchain import hub
 
 # Define the path for the settings file
 home_dir = os.path.expanduser("~")
@@ -16,7 +25,8 @@ os.makedirs(config_dir, exist_ok=True)
 default_settings = {
     "ollama.model": "",
     "ollama.temperature": 0.5,
-    "ollama.url": "http://localhost:11434"
+    "ollama.url": "localhost:11434",
+    "vector.parent_dir": "./.chroma.db"
 }
 
 # Load settings from file or use default settings
@@ -30,42 +40,13 @@ if os.path.exists(config_file):
 else:
     settings = default_settings
 
-
-def chat_with_model(prompt, context, model_name, temperature, url):
-    """
-    Generate a response from the model using the ollama library.
-    
-    Args:
-        prompt (str): The input prompt for the model.
-        context (str): The context to maintain conversation state.
-        model_name (str): The name of the model to use.
-        temperature (float): The sampling temperature for response generation.
-        url (str): The URL of the Ollama server.
-    
-    Returns:
-        dict: The response from the model.
-    """
-    try:
-        client = Client(host=url)
-        response = client.generate(
-            model=model_name,
-            context=context,
-            prompt=prompt,
-            options={"temperature": temperature}
-        )
-        return response
-    except Exception as e:
-        print(f"Error generating response: {e}")
-        return {"response": "", "context": context}
-
-def init():
-    """
-    Initialize the command-line interface, parse arguments, and update settings.
-    """
+def parseArgs():
     parser = argparse.ArgumentParser(description="Chat with a local AI model.")
     parser.add_argument("--model", type=str, help="Name of the model.")
     parser.add_argument("--temperature", type=float, help="Sampling temperature.")
     parser.add_argument("--url", type=str, help="URL of the Ollama server.")
+    parser.add_argument("--vector_parent_dir", type=str, default=".", help="Parent directory where the .chroma.db folder can be found")
+    parser.add_argument("--prompt_template", type=str, help="Path to the prompt template file.")
 
     args = parser.parse_args()
 
@@ -76,37 +57,78 @@ def init():
         settings["ollama.temperature"] = args.temperature
     if args.url:
         settings["ollama.url"] = args.url
+    if args.vector_parent_dir:
+        settings["vector.parent_dir"] = args.vector_parent_dir
 
-    # Check if model_name is empty or not present
-    if not settings.get("ollama.model"):
-        running_models = ollama.list()
-        if running_models:
-            print("Available models:")
-            for i, model in enumerate(running_models['models'], 1):
-                print(f"{i}. {model['name']}")
-            try:
-                model_index = int(input("Please select the model number: ")) - 1
-                settings["ollama.model"] = running_models['models'][model_index]['name']
-            except (ValueError, IndexError):
-                print("Invalid selection. Please enter a valid model number.")
-                settings["ollama.model"] = input("Please enter the model name: ")
-        else:
-            print("No running models found.")
-            settings["ollama.model"] = input("Please enter the model name: ")
+    if not os.path.isdir(settings["vector.parent_dir"]):
+        print(f"Error: The directory {settings['vector.parent_dir']} does not exist.")
+        exit(1)
+
+    settings['vector.collection_name'] = os.path.basename(os.path.abspath(settings["vector.parent_dir"]))
+
+    settings["vector.dir"] = os.path.join(settings["vector.parent_dir"], ".chroma.db")
+    if not os.path.isdir(settings["vector.dir"]):
+        print(f"Error: The directory {settings['vector.dir']} does not exist.")
+        exit(1)
+
+    settings["vector.parent_dir"] = os.path.join(os.path.abspath(settings["vector.parent_dir"]), ".chroma.db")
+
+    if not settings["ollama.model"]:
+        print("Error: Model name is required.")
+        exit(1)
+
+    if args.prompt_template:
+        if not os.path.isfile(args.prompt_template):
+            print(f"Error: The file {args.prompt_template} does not exist.")
+            exit(1)
+        try:
+            with open(args.prompt_template, "r") as f:
+                prompt_content = f.read()
+            if "{context}" not in prompt_content or "{question}" not in prompt_content:
+                print("Error: The prompt template must contain {context} and {question} placeholders.")
+                exit(1)
+            settings["prompt_template"] = PromptTemplate.from_template(prompt_content)
+        except Exception as e:
+            print(f"Error reading prompt template file: {e}")
+            exit(1)
+    else:
+        print("Error: Prompt template file is required.")
+        exit(1)
+
+    return settings
 
 if __name__ == "__main__":
-    init()
-    context = ""
-    try:
-        while True:
-            prompt = input("You: ")
-            response = chat_with_model(prompt, context, settings["ollama.model"], settings["ollama.temperature"], settings["ollama.url"])
-            if "context" in response and response["context"]:
-                context = response["context"]
-            if "response" in response:
-                print(f"{settings['ollama.model']}: {response['response']}")
-            else:
-                print(f"{settings['ollama.model']}: No response received.")
+    settings = parseArgs()
 
-    except KeyboardInterrupt:
-        print("\nExiting chat.")
+    llm = OllamaLLM(
+        base_url=settings["ollama.url"],
+        model=settings["ollama.model"],
+        callback_manager=CallbackManager([StreamingStdOutCallbackHandler()])
+    )
+
+    try:
+        vectorstore = Chroma(
+            collection_name=settings['vector.collection_name'],
+            create_collection_if_not_exists=False,
+            persist_directory=settings["vector.parent_dir"]
+        )
+    except Exception as e:
+        print(f"Error loading vector store: {e}")
+        exit(1)
+
+    while True:
+        qa_chain = (
+            {
+                "context": vectorstore.as_retriever(),
+                "question": RunnablePassthrough(),
+            }
+            | settings["prompt_template"]
+            | llm
+            | StrOutputParser()
+        )
+
+        query = input("\nYou: ")
+        try:
+            result = qa_chain.invoke(query)
+        except Exception as e:
+            print(f"Error: {e}")

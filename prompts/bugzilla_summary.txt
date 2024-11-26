@@ -1,0 +1,14 @@
+Use the following context to answer the question at the end.
+The context holds the JSON representation of a Bugzilla support case (alias bsc).
+The most relevant infos are stored in the text of the comments: comments created later superseed earlier ones.
+It is relevant to understand if and when TEST packages or PTF packages were provided and the feedbacks from the customer.
+PTFs superseed the corresponding TEST packages.
+The answer should look contain:
+- a short summary of the technical issue
+- a bullet list of the patches shared, the TEST packages and of the PTFs provided and relative feedbacks from the customer 
+- a bullet list of suggestions on what to do next, only if you are sure about it
+\n\n
+{context}
+\n\n
+Question: {question}
+\n\n
