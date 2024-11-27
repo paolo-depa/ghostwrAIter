@@ -93,7 +93,7 @@ def load_config():
         if os.path.exists(CONFIG_FILE_PATH_ALT):
             env_file = CONFIG_FILE_PATH_ALT
         else:
-            print("Error: Configuration file not found.")
+            print("Error: Configuration file not found.", file=sys.stderr)
             sys.exit(1)
 
     config = {}
@@ -101,10 +101,10 @@ def load_config():
         config = json.load(f)
 
     if 'url' not in config:
-        print("Error: Bugzilla URL not found in configuration file.")
+        print("Error: Bugzilla URL not found in configuration file.", file=sys.stderr)
         sys.exit(1)
     if 'api_key' not in config:
-        print("Error: Bugzilla api_key not found in configuration file.")
+        print("Error: Bugzilla api_key not found in configuration file.", file=sys.stderr)
         sys.exit(1)
     
     return config
@@ -160,7 +160,7 @@ for attr in BZ_OPT_ATTRS:
 
 # Check if query parameters are empty
 if not query_params:
-    print("Error: No query parameters provided.")
+    print("Error: No query parameters provided.", file=sys.stderr)
     sys.exit(1)
 
 # Query Bugzilla
@@ -169,7 +169,7 @@ try:
     bugs = bz.query(query_params)
     print(f"-- Retrieved {len(bugs)} bugs.")
 except Exception as e:
-    print(f"Error: Unable to query Bugzilla: {e}")
+    print(f"Error: Unable to query Bugzilla: {e}, file=sys.stderr")
     sys.exit(1)
 
 jsonbugs = []
@@ -196,7 +196,7 @@ try:
         jsonbugs.append(JsonBug(bug=bug, comments=jsoncomments).to_json())
         
 except Exception as e:
-    print(f"Error: Unable to retrieve comments: {e}")
+    print(f"Error: Unable to retrieve comments: {e}", file=sys.stderr)
     sys.exit(1)
 
 json_output = json.dumps(jsonbugs, indent=4) + '\n'
