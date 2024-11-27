@@ -1,11 +1,11 @@
-import os
-import sys
-import requests
 import argparse
-import json
-from time import sleep
-from bugzilla import Bugzilla
 import datetime
+import json
+import os
+import requests
+import sys
+from bugzilla import Bugzilla
+
 
 # Define attributes globally
 BZ_OPT_ATTRS = [
@@ -17,6 +17,13 @@ BZ_OPT_ATTRS = [
 class JsonBug:
 
     def __init__(self, bug, comments=None):
+        """
+        Initialize a JsonBug instance.
+
+        Args:
+            bug (Bug): The Bugzilla bug object.
+            comments (list, optional): A list of comments associated with the bug. Defaults to None.
+        """
         if not hasattr(bug, 'id'):
             raise ValueError("Error: Bug ID is mandatory.")
         self.bug_id = bug.id
@@ -27,10 +34,21 @@ class JsonBug:
             setattr(self, attr, getattr(bug, attr, None))
 
     def to_json(self):
-        
+        """
+        Convert the JsonBug instance to a JSON-serializable dictionary.
+
+        Returns:
+            dict: A dictionary containing the bug ID, comments, and other attributes.
+        """
         json_data = {'bug_id': self.bug_id, 'comments': self.comments}
         
-        for attr in BZ_OPT_ATTRS:
+    def __init__(self, comment):
+        """
+        Initialize a JsonComment instance.
+
+        Args:
+            comment (dict): A dictionary containing comment details such as id, text, creator, creation_time, is_private, and optionally attachment_id.
+        """
             json_data[attr] = getattr(self, attr, '')
         
         return json_data
@@ -43,8 +61,7 @@ class JsonComment:
         # List of non-mandatory attributes
         self.text = comment['text']
         self.creator = comment['creator']
-        # Extracting the first 19 characters to get the date and time in 'YYYY-MM-DD HH:MM:SS' format
-        # This ensures the datetime string is properly formatted for further processing
+        # Extract the first 19 characters for 'YYYY-MM-DD HH:MM:SS' format
         self.creation_time = str(comment['creation_time'])[0:19]
         self.is_private = comment['is_private']
         if comment.get('attachment_id'):
@@ -66,7 +83,11 @@ class JsonComment:
 # Load environment variables from bugzilla-scraper.json
 env_file = os.path.join(os.path.dirname(__file__), 'bugzilla-scraper.json')
 if not os.path.exists(env_file):
-    env_file = os.path.expanduser('~/.config/ghostwraiter/bugzilla-scraper.json')
+    if os.path.exists(os.path.expanduser('~/.config/ghostwraiter/bugzilla-scraper.json')):
+      env_file = os.path.expanduser('~/.config/ghostwraiter/bugzilla-scraper.json')
+    else:
+      print("Error: Configuration file not found.")
+      sys.exit(1)
 
 config = {}
 if os.path.exists(env_file):
@@ -82,7 +103,6 @@ if os.path.exists(env_file):
 else:
     print("Error: Configuration file not found.")
     sys.exit(1)
-parser = argparse.ArgumentParser(description='Scrape and retrieve Bugzilla bug info.')
 parser = argparse.ArgumentParser(description='A script to scrape and retrieve bug information from a Bugzilla instance.')
 parser.add_argument('--id', type=int, help='Bug ID')
 for attr in BZ_OPT_ATTRS:
