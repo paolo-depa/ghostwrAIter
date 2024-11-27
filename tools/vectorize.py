@@ -5,16 +5,10 @@ import os
 import time
 import sys
 
-#import langchain_ollama
 from langchain_ollama import OllamaEmbeddings
-import langchain_text_splitters
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-import langchain_chroma
 from langchain_chroma import Chroma
-import langchain_community
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
-
-import chromadb
 from chromadb.utils import embedding_functions
 
 
