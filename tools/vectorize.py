@@ -1,9 +1,11 @@
-import os
 import argparse
+import hashlib
 import json
+import os
 import time
+import sys
 
-import langchain_ollama
+#import langchain_ollama
 from langchain_ollama import OllamaEmbeddings
 import langchain_text_splitters
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -14,17 +16,17 @@ from langchain_community.document_loaders import DirectoryLoader, TextLoader
 
 import chromadb
 from chromadb.utils import embedding_functions
-import hashlib
+
 
 def parse_and_validate_args():
     parser = argparse.ArgumentParser(description="Vectorize text files in a directory using an embedding model.")
     parser.add_argument("--directory", type=str, default=".", help="Path to the directory containing text files.")
-    parser.add_argument("--vector_dir", type=str, help="Path to the file where the chromadb will be saved.")
+    parser.add_argument("--vector_dir", type=str, help="Path to the directory where the chromadb will be saved.")
     parser.add_argument("--ollama_url", type=str, help="URL for the Ollama service.")
     parser.add_argument("--ollama_embedding", type=str, help="Embedding model for the Ollama service.")
     # not working with the current version of langchain-community
     # parser.add_argument("-r", "--recursive", action="store_true", help="Scan the directory recursively.")
-    parser.add_argument("--exclude", action="append", help="Paths to exclude, enquoted in single quotes.")
+    parser.add_argument("--exclude", action="append", help="Paths to exclude, enquoted in single quotes. Can be used multiple times.")
     args = parser.parse_args()
 
     if not args.directory:
@@ -32,7 +34,7 @@ def parse_and_validate_args():
 
     # Verify that the directory is readable
     if not os.access(args.directory, os.R_OK):
-        print(f"Directory {args.directory} is not readable.")
+        print(f"Directory {args.directory} is not readable.", file=sys.stderr)
         return None
 
     # Set default vector_dir if not provided
@@ -51,7 +53,7 @@ def parse_and_validate_args():
                     if not args.ollama_embedding:
                         args.ollama_embedding = config.get("ollama.embedding")
             except (IOError, json.JSONDecodeError):
-                print(f"Error reading configuration file {config_path}.")
+                print(f"Error reading configuration file {config_path}.", file=sys.stderr)
                 return None
 
     # Add vector store base path to exclude paths
@@ -78,7 +80,7 @@ def update_exclude_and_content(args):
             with open(content_file_path, 'r') as content_file:
                 content_data = json.load(content_file)
         except (IOError, json.JSONDecodeError):
-            print(f"Error reading content file {content_file_path}.")
+            print(f"Error reading content file {content_file_path}.", file=sys.stderr)
             return
 
     # Scan directory and calculate hashes
@@ -100,7 +102,7 @@ def update_exclude_and_content(args):
         with open(content_file_path, 'w') as content_file:
             json.dump(content_data, content_file)
     except IOError:
-        print(f"Error writing to content file {content_file_path}.")
+        print(f"Error writing to content file {content_file_path}.", file=sys.stderr)
 
 def main():
     args = parse_and_validate_args()
@@ -111,7 +113,7 @@ def main():
     collection_name = os.path.basename(full_path)
 
     embedding_function = embedding_functions.DefaultEmbeddingFunction()
-    if (args.ollama_url and args.ollama_embedding):
+    if args.ollama_url and args.ollama_embedding:
         embedding_function = OllamaEmbeddings(base_url=args.ollama_url, model=args.ollama_embedding)
     
     update_exclude_and_content(args)
@@ -150,10 +152,10 @@ def main():
              batch = splitted[i:i + batch_size]
              ids = vector_store.add_documents(batch)
              vector_current = time.time()
-             print(f"Added {(i + len(ids)) } / {total_docs} chunks to vector store in {int(vector_current - vector_start)}.")
+             print(f"Added {(i + len(ids)) } / {total_docs} chunks to vector store in {int(vector_current - vector_start)} seconds.")
 
     except Exception as e:
-        print(f"Error adding documents to vector store: {e}")
+        print(f"Error adding documents to vector store: {e}", file=sys.stderr)
         return
 
 if __name__ == "__main__":
