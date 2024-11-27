@@ -125,8 +125,8 @@ if __name__ == "__main__":
             | StrOutputParser()
         )
 
-        query = input("\nYou: ")
         try:
+            query = input("\nYou: ")
             result = qa_chain.invoke(query)
         except Exception as e:
             print(f"Error: {e}")
