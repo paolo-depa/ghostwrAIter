@@ -2,17 +2,21 @@ import argparse
 import datetime
 import json
 import os
-import requests
 import sys
+import requests
+
 from bugzilla import Bugzilla
 
-
-# Define attributes globally
+# Define optional Bugzilla attributes globally
 BZ_OPT_ATTRS = [
     'reporter', 'creator', 'assigned_to', 'keywords', 'op_sys', 
     'platform', 'component', 'version', 'product', 'is_open', 
     'status', 'whiteboard'
 ]
+
+# Defining the path for the configuration file
+CONFIG_FILE_PATH = os.path.join(os.path.dirname(__file__), 'bugzilla-scraper.json')
+CONFIG_FILE_PATH_ALT = os.path.expanduser('~/.config/ghostwraiter/bugzilla-scraper.json')
 
 class JsonBug:
 
@@ -24,7 +28,7 @@ class JsonBug:
             bug (Bug): The Bugzilla bug object.
             comments (list, optional): A list of comments associated with the bug. Defaults to None.
         """
-        if not hasattr(bug, 'id'):
+        if not hasattr(bug, 'id') or bug.id is None:
             raise ValueError("Error: Bug ID is mandatory.")
         self.bug_id = bug.id
         self.comments = comments if comments is not None else []
@@ -42,30 +46,27 @@ class JsonBug:
         """
         json_data = {'bug_id': self.bug_id, 'comments': self.comments}
         
-    def __init__(self, comment):
-        """
-        Initialize a JsonComment instance.
-
-        Args:
-            comment (dict): A dictionary containing comment details such as id, text, creator, creation_time, is_private, and optionally attachment_id.
-        """
-            json_data[attr] = getattr(self, attr, '')
+        # Add non-mandatory attributes
+        for attr in BZ_OPT_ATTRS:
+            json_data[attr] = getattr(self, attr, None)
         
         return json_data
 
 class JsonComment:
     
+    DATE_TIME_FORMAT_LENGTH = 19
+    
     def __init__(self, comment):
-        self.id = comment['id']
+        self.id = comment.get('id', None)
 
         # List of non-mandatory attributes
-        self.text = comment['text']
-        self.creator = comment['creator']
+        self.text = comment.get('text', '')
+        self.creator = comment.get('creator', '')
         # Extract the first 19 characters for 'YYYY-MM-DD HH:MM:SS' format
-        self.creation_time = str(comment['creation_time'])[0:19]
-        self.is_private = comment['is_private']
+        self.creation_time = str(comment.get('creation_time', ''))[:JsonComment.DATE_TIME_FORMAT_LENGTH]
+        self.is_private = comment.get('is_private', False)
         if comment.get('attachment_id'):
-            self.attachment_id = comment['attachment_id']
+            self.attachment_id = comment.get('attachment_id')
 
     def to_json(self):
         json_data = {
@@ -80,17 +81,22 @@ class JsonComment:
 
         return json_data
 
-# Load environment variables from bugzilla-scraper.json
-env_file = os.path.join(os.path.dirname(__file__), 'bugzilla-scraper.json')
-if not os.path.exists(env_file):
-    if os.path.exists(os.path.expanduser('~/.config/ghostwraiter/bugzilla-scraper.json')):
-      env_file = os.path.expanduser('~/.config/ghostwraiter/bugzilla-scraper.json')
-    else:
-      print("Error: Configuration file not found.")
-      sys.exit(1)
+def load_config():
+    """
+    Load environment variables from the configuration file.
 
-config = {}
-if os.path.exists(env_file):
+    Returns:
+        dict: Configuration dictionary containing Bugzilla URL and API key.
+    """
+    env_file = CONFIG_FILE_PATH
+    if not os.path.exists(env_file):
+        if os.path.exists(CONFIG_FILE_PATH_ALT):
+            env_file = CONFIG_FILE_PATH_ALT
+        else:
+            print("Error: Configuration file not found.")
+            sys.exit(1)
+
+    config = {}
     with open(env_file) as f:
         config = json.load(f)
 
@@ -100,33 +106,43 @@ if os.path.exists(env_file):
     if 'api_key' not in config:
         print("Error: Bugzilla api_key not found in configuration file.")
         sys.exit(1)
-else:
-    print("Error: Configuration file not found.")
-    sys.exit(1)
+    
+    return config
+
+def initialize_bugzilla(config):
+    """
+    Initialize the Bugzilla connection.
+
+    Args:
+        config (dict): Configuration dictionary containing Bugzilla URL and API key.
+
+    Returns:
+        Bugzilla: An instance of the Bugzilla connection.
+    """
+    bugzilla_url = config['url']
+    api_key = config['api_key']
+    try:
+        bz = Bugzilla(url=bugzilla_url, api_key=api_key)
+    except requests.exceptions.RequestException as e:
+        print(f"Error: Request error occurred: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: An unexpected error occurred: {e}")
+        sys.exit(1)
+    return bz
+
+# Load environment variables from bugzilla-scraper.json
+config = load_config()
 parser = argparse.ArgumentParser(description='A script to scrape and retrieve bug information from a Bugzilla instance.')
 parser.add_argument('--id', type=int, help='Bug ID')
+parser.add_argument('--output', type=str, help='Output file to store JSON contents')
 for attr in BZ_OPT_ATTRS:
     parser.add_argument(f'--{attr}', type=str, help=f'{attr.capitalize()}')
 
 args = parser.parse_args()
 
 # Initialize Bugzilla connection
-bugzilla_url = config['url']
-api_key = config['api_key']
-try:
-    bz = Bugzilla(url=bugzilla_url, api_key=api_key)
-except requests.exceptions.ConnectionError as e:
-    print(f"Error: Unable to connect to Bugzilla: {e}")
-    sys.exit(1)
-except requests.exceptions.HTTPError as e:
-    print(f"Error: HTTP error occurred: {e}")
-    sys.exit(1)
-except requests.exceptions.InvalidURL as e:
-    print(f"Error: Invalid URL: {e}")
-    sys.exit(1)
-except Exception as e:
-    print(f"Error: An unexpected error occurred: {e}")
-    sys.exit(1)
+bz = initialize_bugzilla(config)
 
 # Build query parameters
 query_params = {}
@@ -178,8 +194,16 @@ try:
                 jsoncomments.append(JsonComment(comment).to_json())
         
         jsonbugs.append(JsonBug(bug=bug, comments=jsoncomments).to_json())
+        
 except Exception as e:
     print(f"Error: Unable to retrieve comments: {e}")
     sys.exit(1)
 
-print(json.dumps(jsonbugs, indent=4) + '\n')
+json_output = json.dumps(jsonbugs, indent=4) + '\n'
+
+if args.output:
+    with open(args.output, 'w') as f:
+        f.write(json_output)
+    print(f"-- JSON output written to {args.output} --")
+else:
+    print(json_output)
