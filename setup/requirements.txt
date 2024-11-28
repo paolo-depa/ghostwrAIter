@@ -1,0 +1,8 @@
+bugzilla
+chromadb
+langchain-core
+langchain-chroma
+langchain-community
+langchain-ollama
+langchain-text-splitters
+tqdm

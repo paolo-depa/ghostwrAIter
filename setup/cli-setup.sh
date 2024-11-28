@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# Source the environment variables
-if [[ -f "$(dirname "$0")/cli-setup.env" ]]; then
-    source $(dirname "$0")/cli-setup.env
-elif [[ -f "$HOME/.config/ghostwraiter/cli-setup.env" ]]; then
-    source "$HOME/.config/ghostwraiter/cli-setup.env"
+# Check if requirements.txt exists
+if [[ -f "$(dirname "$0")/requirements.txt" ]]; then
+    REQUIREMENTS_FILE="$(dirname "$0")/requirements.txt"
+elif [[ -f "$HOME/.config/ghostwraiter/requirements.txt" ]]; then
+    REQUIREMENTS_FILE="$HOME/.config/ghostwraiter/requirements.txt"
 else
-    echo "cli-setup.env file not found."
+    echo "requirements.txt file not found."
     exit 1
 fi
 
-# Install the libraries listed in PIP_LIBS
+# Install the libraries listed in requirements.txt
 # Check for Python version >= 3.11
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
 REQUIRED_VERSION="3.11"
@@ -26,7 +26,7 @@ if ! command -v pip &> /dev/null; then
     exit 1
 fi
 
-pip install $PIP_LIBS
+pip install -r "$REQUIREMENTS_FILE"
 
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
     echo "export PATH=\"~/.local/bin:\$PATH\"" >> ~/.bashrc
