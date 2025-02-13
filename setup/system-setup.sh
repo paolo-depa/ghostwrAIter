@@ -1,4 +1,6 @@
 #!/bin/bash
+CDI_DIR_PATH="/etc/cdi"
+CDI_FILE_PATH="$CDI_DIR_PATH/nvidia.yaml"
 
 if [[ -f "$(dirname "$0")/system-setup.env" ]]; then
     source "$(dirname "$0")/system-setup.env"
@@ -14,7 +16,6 @@ if ! sudo SUSEConnect -l | grep -q "Containers Module" | grep -q "Activated"; th
 fi
 
 if ! command -v podman &> /dev/null; then
-then
     sudo zypper in -y podman
 fi
 
@@ -29,7 +30,36 @@ if systemctl is-active --quiet firewalld; then
 fi
 
 # run Ollama container
-podman run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+PODMAN_GPU_PARAM=''
+# run Ollama container
+PODMAN_GPU_PARAM=''
+if [[ $ENABLE_GPU != 'false' ]]; then
+
+    # Testing if nvidia container toolkit was installed
+    sudo which nvidia-ctk >> /dev/null 2>&1
+    if [[ $? -ne 0 ]]; then
+            echo "nvidia-ctk not found : please follow the docs at https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html"
+            exit -1
+    fi
+
+    if [[ ! -d $CDI_DIR_PATH ]]; then
+        sudo mkdir $CDI_DIR_PATH
+    fi
+
+    if [[ ! -f $CDI_FILE_PATH ]]; then
+        sudo nvidia-ctk cdi generate --output=$CDI_FILE_PATH
+    fi
+
+    GPU_NAME="nvidia.com/gpu=$ENABLE_GPU"
+    if sudo nvidia-ctk cdi list 2>> /dev/null | grep -q $GPU_NAME; then
+        PODMAN_GPU_PARAM="--device $GPU_NAME"
+    else
+        echo "$GPU_NAME not found"
+    fi
+
+fi
+
+ podman run -d $PODMAN_GPU_PARAM -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
 
 for model in ${OLLAMA_MODELS//,/ }
 do
