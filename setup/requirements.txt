@@ -1,5 +1,7 @@
 bugzilla
 chromadb
+fastembed
+# fastembed-gui // Needs cudnn9 package from NVIDIA repos and "providers" to be set to ["CUDAExecutionProvider"] in vectorize.py
 langchain-core
 langchain-chroma
 langchain-community
